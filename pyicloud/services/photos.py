@@ -420,6 +420,13 @@ class PhotoAsset(object):
 
         self._versions = None
 
+    ITEM_TYPES = {
+        u"public.heic": u"image",
+        u"public.jpeg": u"image",
+        u"public.png": u"image",
+        u"com.apple.quicktime-movie": u"movie"
+    }
+
     PHOTO_VERSION_LOOKUP = {
         u"original": u"resOriginal",
         u"medium": u"resJPEGMed",
@@ -473,25 +480,56 @@ class PhotoAsset(object):
                 self._master_record['fields']['resOriginalHeight']['value'])
 
     @property
+    def item_type(self):
+        item_type = self._master_record['fields']['itemType']['value']
+        if item_type in self.ITEM_TYPES:
+            return self.ITEM_TYPES[item_type]
+        if self.filename.lower().endswith(('.heic', '.png', '.jpg', '.jpeg')):
+            return 'image'
+        return 'movie'
+
+    @property
     def versions(self):
         if not self._versions:
             self._versions = {}
-            if 'resVidSmallRes' in self._master_record['fields']:
+            if self.item_type == "movie":
                 typed_version_lookup = self.VIDEO_VERSION_LOOKUP
             else:
                 typed_version_lookup = self.PHOTO_VERSION_LOOKUP
 
             for key, prefix in typed_version_lookup.items():
-                if '%sWidth' % prefix in self._master_record['fields']:
+                if '%sRes' % prefix in self._master_record['fields']:
                     f = self._master_record['fields']
-                    self._versions[key] = {
-                        'width': f['%sWidth' % prefix]['value'],
-                        'height': f['%sHeight' % prefix]['value'],
-                        'size': f['%sRes' % prefix]['value']['size'],
-                        'type': f['%sFileType' % prefix]['value'],
-                        'url': f['%sRes' % prefix]['value']['downloadURL'],
-                        'filename': self.filename,
-                    }
+                    version = {'filename': self.filename}
+
+                    width_entry = f.get('%sWidth' % prefix)
+                    if width_entry:
+                        version['width'] = width_entry['value']
+                    else:
+                        version['width'] = None
+
+                    height_entry = f.get('%sHeight' % prefix)
+                    if height_entry:
+                        version['height'] = height_entry['value']
+                    else:
+                        version['height'] = None
+
+                    size_entry = f.get('%sRes' % prefix)
+                    if size_entry:
+                        version['size'] = size_entry['value']['size']
+                        version['url'] = size_entry['value']['downloadURL']
+                    else:
+                        version['size'] = None
+                        version['url'] = None
+
+                    type_entry = f.get('%sFileType' % prefix)
+                    if type_entry:
+                        version['type'] = type_entry['value']
+                    else:
+                        version['type'] = None
+
+                    self._versions[key] = version
+
         return self._versions
 
     def download(self, version='original', **kwargs):
